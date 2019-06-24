@@ -3,19 +3,19 @@ Hobo-MODIS LST comparison
 
 **LST_time_skip_nans_hobo.py:** 
 
-Reads LST value and time from MODIS Terra and Aqua .hdf files (day and night observations)
+* Reads LST value and time from MODIS Terra and Aqua .hdf files (day and night observations)
 
-Reads Hobo data and compares timeseries
+* Reads Hobo data and compares timeseries
 
-Calculates regression parameters
+* Calculates regression parameters
 
-Applies correction factor to LST data 
+* Applies correction factor to LST data 
 
-Plots SUHII with and without correction factor
+* Plots SUHII with and without correction factor
 
 
 **LST_time_skip_nans_hobo_subprocess.py:** 
 
-Attempt to speed up code using subprocess module.
+* Attempt to speed up code using subprocess module.
 
-(PC freezes sometimes)
+* (PC freezes sometimes)
