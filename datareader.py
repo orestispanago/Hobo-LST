@@ -38,17 +38,14 @@ class Hobo:
         hobo_df = hobo_df.resample('30min').mean()
         return hobo_df
 
+
 def init_hobo():
     coords = pd.read_csv('stations.txt')
     for row in range(len(coords)):
         Hobo(*coords.loc[row].tolist())
 
 
-
-
 class Modis:
-    def __init__(self,datadir):
-        self.datadir = datadir
 
     def descale_lst(vals):
         descvals = []
@@ -75,12 +72,12 @@ class Modis:
                 utc.append(None)
         return utc
 
-    def load_dataset(self):
-        hdfiles = glob.glob(os.getcwd() + self.datadir)
+    def load_dataset(datadir):
+        hdfiles = glob.glob(os.getcwd() + datadir)
 
         df_lst = pd.DataFrame(columns=['alias', 'time', 'lst'])
         for when in ['Day', 'Night']:
-            for filename in hdfiles[:50]:
+            for filename in hdfiles:
                 lst_subdataset = f"HDF4_EOS:EOS_GRID:{filename}:MODIS_Grid_Daily_1km_LST:LST_{when}_1km"
                 valstring = os.popen(f'gdallocationinfo -valonly {lst_subdataset} -wgs84 < coords.txt').read()
                 vals = valstring.split('\n')[:-1]
@@ -90,9 +87,9 @@ class Modis:
                 time_subdataset = f"HDF4_EOS:EOS_GRID:{filename}:MODIS_Grid_Daily_1km_LST:{when}_view_time"
                 valstring = os.popen(f'gdallocationinfo -valonly {time_subdataset} -wgs84 < coords.txt').read()
                 vals = valstring.split('\n')[:-1]
-                utime = Modis.desc_conv_time(filename,vals)
+                utime = Modis.desc_conv_time(filename, vals)
 
-                for station,tstamp,val in zip(Hobo.stations, utime, lst):
+                for station, tstamp, val in zip(Hobo.stations, utime, lst):
                     df_lst = df_lst.append(
                         {'alias': station.alias, 'time': tstamp, 'lst': val},
                         ignore_index=True)
@@ -102,5 +99,3 @@ class Modis:
 
 
 init_hobo()
-
-

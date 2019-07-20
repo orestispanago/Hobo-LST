@@ -1,21 +1,22 @@
 # Hobo-LST
 Hobo-MODIS LST comparison
 
-**LST_time_skip_nans_hobo.py:** 
+Faster and more stable version of .hdf reader functions.
 
-* Reads LST value and time from MODIS Terra and Aqua .hdf files (day and night observations)
+**datareader.py:** 
 
-* Reads Hobo data and compares timeseries
+* Contains Hobo and Modis classes, used to read data
+
+**main.py**
+
+* Reads LST and time from MODIS Terra and Aqua .hdf files (day and night observations)
+
+* Reads Hobo data from .csv files
 
 * Calculates regression parameters
 
 * Applies correction factor to LST data 
 
+* Selects day/night heat island indices
+
 * Plots SUHII with and without correction factor
-
-
-**LST_time_skip_nans_hobo_subprocess.py:** 
-
-* Attempt to speed up code using subprocess module.
-
-* (PC freezes sometimes)

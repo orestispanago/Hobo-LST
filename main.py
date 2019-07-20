@@ -10,6 +10,11 @@ import statsmodels.formula.api as sm
 from statsmodels.api import add_constant
 from pysolar import solar
 
+# Gets rid of pandas FutureWarning
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
+
+
 
 def plot_hobo_modis(df, folder=None):
     for station in Hobo.stations:
@@ -189,7 +194,7 @@ others = [station for station in Hobo.stations[1:]]
 
 hobo = Hobo.load_dataset('raw/Hobo-Apr-Nov')
 
-lst = Modis.load_dataset(Modis('/raw/*/*.hdf'))
+lst = Modis.load_dataset('/raw/*/*.hdf')
 lst = lst.resample('30min').mean()
 
 large = pd.concat([lst, hobo], sort=False)
@@ -222,7 +227,7 @@ suhiicw = suhiic.resample('W').mean()
 # plot_heatmap(uhii, title='UHII-DoW - heatmap', folder='No-Cor/Ts/HII')
 # plot_heatmap(suhiic, title='SUHII-DoW - heatmap', folder='Cor-Factor/Ts/HII')
 
-plot_diurnal(uhii, title='UHII - Diurnal variation', folder='No-Cor/Ts/HII')
+# plot_diurnal(uhii, title='UHII - Diurnal variation', folder='No-Cor/Ts/HII')
 
 # plot_dow(uhii, title='UHII - DoW', folder='No-Cor/Ts/HII')
 
