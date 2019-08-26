@@ -1,86 +1,19 @@
 import os
-import glob
-from datetime import datetime
 import pandas as pd
+from datareader import Hobo
+from datareader import Modis
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from scipy import stats
 import statsmodels.formula.api as sm
 from statsmodels.api import add_constant
+from pysolar import solar
 
-import time
+# Gets rid of pandas FutureWarning
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
 
-start = time.time()
-
-
-class Hobo:
-    stations = []
-
-    def __init__(self, codename, alias, lat, lon):
-        self.codename = codename
-        self.alias = alias
-        self.lat = lat
-        self.lon = lon
-        Hobo.stations.append(self)
-
-
-def pixel_utc(filename, lat, lon, when='Day'):
-    year_day = filename.split('.')[1]
-    time_subdataset = f"HDF4_EOS:EOS_GRID:{filename}:MODIS_Grid_Daily_1km_LST:{when}_view_time"
-    stime = os.popen(
-        f'gdallocationinfo -valonly {time_subdataset} -wgs84 {lon} {lat}').read()
-    if stime == '255\n':
-        return None
-    desc_stime = int(stime) * 0.1
-    utime = float(desc_stime) - 21.7 / 15  # Convert local solar time to UTC
-    uhour = str(int(utime)).zfill(2)
-    umin = str(round((utime % 1) * 60)).zfill(2)
-    dtime = datetime.strptime(year_day + uhour + umin, 'A%Y%j%H%M')
-    return dtime
-
-
-def pixel_lst(filename, lat, lon, when='Day'):
-    LST_subdataset = f"HDF4_EOS:EOS_GRID:{filename}:MODIS_Grid_Daily_1km_LST:LST_{when}_1km"
-    LST = os.popen(
-        f'gdallocationinfo -valonly {LST_subdataset} -wgs84 {lon} {lat}').read()
-    if LST == '0\n':
-        return None
-    return int(LST) * 0.02 - 273.15
-
-
-def stations_time_lst():
-    hdfiles = glob.glob(os.getcwd() + '/raw/*/' + '*.hdf')
-    df_lst = pd.DataFrame(columns=['alias', 'time', 'lst'])
-    for filename in hdfiles:
-        for station in Hobo.stations:
-            for dn in ['Day', 'Night']:
-                tstamp = pixel_utc(filename, station.lat, station.lon, when=dn)
-                val = pixel_lst(filename, station.lat, station.lon, when=dn)
-                df_lst = df_lst.append(
-                    {'alias': station.alias, 'time': tstamp, 'lst': val},
-                    ignore_index=True)
-    df_lst = df_lst.pivot_table('lst', 'time', 'alias')
-    return df_lst
-
-
-def get_hobo():
-    df_list = []
-    for station in Hobo.stations:
-        hobos = glob.glob(
-            os.getcwd() + f'/raw/Hobo-Apr-Nov/*{station.codename}*.csv')
-        each = []
-        for fname in hobos:
-            hob = pd.read_csv(fname, skiprows=2, usecols=[1, 2],
-                              names=['time', station.alias + 'T'],
-                              index_col='time', parse_dates=True)
-            each.append(hob)
-        each_df = pd.concat(each, axis=0)
-        each_df = each_df.dropna()
-        df_list.append(each_df)
-    hobo_df = pd.concat(df_list, axis=0, sort=False)
-    hobo_df = hobo_df.resample('30min').mean()
-    return hobo_df
 
 
 def plot_hobo_modis(df, folder=None):
@@ -137,8 +70,8 @@ def reg_stats(df):
         test = a[station.alias].values  # Sat
         ref = a[f"{station.alias}T"].values  # Ground
 
-        X = add_constant(ref)  # include constant (intercept) in ols model
-        mod = sm.OLS(test, X)
+        x = add_constant(ref)  # include constant (intercept) in ols model
+        mod = sm.OLS(test, x)
         results = mod.fit()
 
         inter, slope = results.params
@@ -195,42 +128,110 @@ def cor_modis(df):
     return df
 
 
-coords = pd.read_csv('coords.txt')
+def plot_heatmap(df, title=None, folder=None):
+    byday = dow(df)
+    heatmap = sns.heatmap(byday)
+    if folder is not None:
+        plt.title(title)
+        fig = heatmap.get_figure()
+        fig.savefig(make_dir(folder) + title + '.png')
+    plt.show()
 
-for row in range(len(coords)):
-    Hobo(*coords.loc[row].tolist())
+
+def plot_diurnal(df, title=None, folder=None):
+    hourly = df.groupby(df.index.hour).mean()
+    for o in others:
+        plt.plot(hourly[o.alias])
+        plt.legend()
+        plt.xlabel('Time of Day')
+    if folder is not None:
+        plt.title(title)
+
+        plt.savefig(make_dir(folder) + title + '.png')
+    plt.show()
+
+
+def plot_dow(df, title=None, folder=None):
+    byday = dow(df)
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    for o in others:
+        ax.plot(byday[o.alias])
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.set_xlabel('Day of week')
+    if folder is not None:
+        ax.set_title(title)
+        fig.savefig(make_dir(folder) + title + '.png')
+    plt.show()
+
+
+def dow(df):
+    weekdays = "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday".split(',')
+    by_dow = df.groupby(df.index.weekday_name).mean().reindex(weekdays)
+    return by_dow
+
+def zenith(df):
+    """ Calculates solar zenith for dataframe index and adds new zen column"""
+    dfzen = df.copy()
+    zenlist = []
+    for t in df.index:
+        zen = solar.get_altitude(38.291969, 21.788156, t)
+        zenlist.append(zen)
+    dfzen['zen'] = zenlist
+    return dfzen
+
+def day_night(df,day=True):
+    """ Returns day/night dataframe by masking night/day rows with NaN"""
+    dfout= zenith(df)
+    if day is True:
+        dfout = dfout.mask(dfout['zen'] < 1.0)
+    else:
+        dfout =  dfout.mask((dfout['zen'] < 89.0) & (dfout['zen'] > 1.0))
+    return dfout
 
 ref_hobo = Hobo.stations[0]
 others = [station for station in Hobo.stations[1:]]
 
-lst = stations_time_lst()
+hobo = Hobo.load_dataset('raw/Hobo-Apr-Nov')
+
+lst = Modis.load_dataset('/raw/*/*.hdf')
 lst = lst.resample('30min').mean()
-hobo = get_hobo()
+
 large = pd.concat([lst, hobo], sort=False)
 
 regresults = reg_stats(large)
 regresults.to_excel(make_dir('No-Cor/Reg') + 'results.xlsx')
-plot_scatters(large, folder='No-Cor/Reg', name='hobo_modis_scatter.png')
+# plot_scatters(large, folder='No-Cor/Reg', name='hobo_modis_scatter.png')
 
 largec = cor_modis(large.copy())
 regresultsc = reg_stats(largec)
 regresultsc.to_excel(make_dir('Cor-Factor/Reg') + 'results.xlsx')
-plot_scatters(largec, folder='Cor-Factor/Reg', name='hobo_modis_scatter.png')
+# plot_scatters(largec, folder='Cor-Factor/Reg', name='hobo_modis_scatter.png')
 
 daily = large.resample('D').mean()
-plot_hobo_modis(daily, folder='No-Cor/Ts/Daily')
+# plot_hobo_modis(daily, folder='No-Cor/Ts/Daily')
 
 dailyc = largec.resample('D').mean()
-plot_hobo_modis(dailyc, folder='Cor-Factor/Ts/Daily')
+# plot_hobo_modis(dailyc, folder='Cor-Factor/Ts/Daily')
 
 uhii, suhii = uhi_suhi(large)
 uhiiw = uhii.resample('W').mean()
 suhiiw = suhii.resample('W').mean()
-plot_hii(uhiiw, title='UHII - Weekly Averages', folder='No-Cor/Ts/HII')
-plot_hii(suhiiw, title='SUHII - Weekly Averages', folder='No-Cor/Ts/HII')
+# plot_hii(uhiiw, title='UHII - Weekly Averages', folder='No-Cor/Ts/HII')
+# plot_hii(suhiiw, title='SUHII - Weekly Averages', folder='No-Cor/Ts/HII')
 
 uhiic, suhiic = uhi_suhi(largec)
 suhiicw = suhiic.resample('W').mean()
-plot_hii(suhiicw, title='SUHII - Weekly Averages', folder='Cor-Factor/Ts/HII')
+# plot_hii(suhiicw, title='SUHII - Weekly Averages', folder='Cor-Factor/Ts/HII')
 
-print(time.time() - start)
+# plot_heatmap(uhii, title='UHII-DoW - heatmap', folder='No-Cor/Ts/HII')
+# plot_heatmap(suhiic, title='SUHII-DoW - heatmap', folder='Cor-Factor/Ts/HII')
+
+# plot_diurnal(uhii, title='UHII - Diurnal variation', folder='No-Cor/Ts/HII')
+
+# plot_dow(uhii, title='UHII - DoW', folder='No-Cor/Ts/HII')
+
+
+uhii_day = day_night(uhii,day=True)
+uhii_night = day_night(uhii,day=False)
+hourly_day = uhii_day.groupby(uhii_day.index.hour).mean()
