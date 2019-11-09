@@ -20,3 +20,7 @@ Faster and more stable version of .hdf reader functions.
 * Selects day/night heat island indices
 
 * Plots SUHII with and without correction factor
+
+* Plots LST-Hobo residuals timeseries
+
+* Plots UHII and SUHII day/night
