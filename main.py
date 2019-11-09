@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from datareader import Hobo
-from datareader import Modis
+from datareader import dataset
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
@@ -14,11 +14,21 @@ from pysolar import solar
 from pandas.plotting import register_matplotlib_converters
 register_matplotlib_converters()
 
+params = {'figure.figsize': (14, 4),
+          'axes.titlesize': 18,
+          'axes.titleweight': 'bold',
+          'axes.labelsize': 18,
+          'axes.labelweight': 'bold',
+          'xtick.labelsize': 18,
+          'ytick.labelsize': 18,
+          'font.weight' : 'bold',
+          'font.size': 18,}
+plt.rcParams.update(params)
 
 
 def plot_hobo_modis(df, folder=None):
     for station in Hobo.stations:
-        plt.figure(figsize=(14, 4))
+#        plt.figure(figsize=(14, 4))
         plt.plot(df[station.alias + 'T'])
         plt.plot(df[station.alias])
         plt.title(station.alias)
@@ -30,7 +40,20 @@ def plot_hobo_modis(df, folder=None):
             plt.savefig(make_dir(folder) + name)
         plt.show()
 
-
+def plot_hobo_modis_resids(df, folder=None):
+    for station in Hobo.stations:
+#        plt.figure(figsize=(14, 4))
+        plt.plot(df[f"{station.alias}T-{station.alias}"])
+        plt.title(station.alias)
+        plt.legend(['Hobo-MODIS'])
+        plt.ylabel('Temperature $(\degree$C)')
+        plt.xlabel('Datetime - UTC')
+        if folder is not None:
+            name = station.alias + '.png'
+            plt.savefig(make_dir(folder) + name)
+        plt.show()
+        
+        
 def plot_scatters(df, folder=None, name=None):
     fig, axes = plt.subplots(nrows=2, ncols=4, sharex=True, sharey=True,
                              figsize=(14, 7))
@@ -109,11 +132,12 @@ def uhi_suhi(df):
 
 def plot_hii(df, title=None, folder=None):
     """Plots heat island index (uhii or suhii)"""
-    plt.figure(figsize=(14, 4))
+#    plt.figure(figsize=(14, 4))
     for i in others:
         plt.plot(df[i.alias])
-        plt.legend()
+        plt.legend(bbox_to_anchor=(1, 1))
     plt.title(title)
+    plt.tight_layout()
     if folder is not None:
         plt.savefig(make_dir(folder) + title + '.png')
     plt.show()
@@ -124,7 +148,7 @@ def cor_modis(df):
     for i in regresults.index:
         slope = regresults.loc[i]['slope']
         intercept = regresults.loc[i]['intercept']
-        df[i] = large[i] / slope - intercept
+        df[i] = dataset[i] / slope - intercept
     return df
 
 
@@ -151,6 +175,12 @@ def plot_diurnal(df, title=None, folder=None):
     plt.show()
 
 
+def dow(df):
+    weekdays = "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday".split(',')
+    by_dow = df.groupby(df.index.weekday_name).mean().reindex(weekdays)
+    return by_dow
+
+
 def plot_dow(df, title=None, folder=None):
     byday = dow(df)
     fig = plt.figure()
@@ -165,10 +195,6 @@ def plot_dow(df, title=None, folder=None):
     plt.show()
 
 
-def dow(df):
-    weekdays = "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday".split(',')
-    by_dow = df.groupby(df.index.weekday_name).mean().reindex(weekdays)
-    return by_dow
 
 def zenith(df):
     """ Calculates solar zenith for dataframe index and adds new zen column"""
@@ -189,40 +215,39 @@ def day_night(df,day=True):
         dfout =  dfout.mask((dfout['zen'] < 89.0) & (dfout['zen'] > 1.0))
     return dfout
 
+def calc_resids(df):
+    for station in Hobo.stations:
+        df[f"{station.alias}T-{station.alias}"]= df[station.alias + 'T'] - df[station.alias]
+    return df
+
 ref_hobo = Hobo.stations[0]
 others = [station for station in Hobo.stations[1:]]
 
-hobo = Hobo.load_dataset('raw/Hobo-Apr-Nov')
-
-lst = Modis.load_dataset('/raw/*/*.hdf')
-lst = lst.resample('30min').mean()
-
-large = pd.concat([lst, hobo], sort=False)
-
-regresults = reg_stats(large)
+regresults = reg_stats(dataset)
 regresults.to_excel(make_dir('No-Cor/Reg') + 'results.xlsx')
-# plot_scatters(large, folder='No-Cor/Reg', name='hobo_modis_scatter.png')
+# plot_scatters(dataset, folder='No-Cor/Reg', name='hobo_modis_scatter.png')
 
-largec = cor_modis(large.copy())
-regresultsc = reg_stats(largec)
+corrected = cor_modis(dataset.copy())
+regresultsc = reg_stats(corrected)
 regresultsc.to_excel(make_dir('Cor-Factor/Reg') + 'results.xlsx')
-# plot_scatters(largec, folder='Cor-Factor/Reg', name='hobo_modis_scatter.png')
+# plot_scatters(corrected, folder='Cor-Factor/Reg', name='hobo_modis_scatter.png')
 
-daily = large.resample('D').mean()
+daily = dataset.resample('D').mean()
+daily = calc_resids(daily)
+#plot_hobo_modis_resids(daily,folder='No-Cor/Ts/Daily/Resids')
 # plot_hobo_modis(daily, folder='No-Cor/Ts/Daily')
 
-dailyc = largec.resample('D').mean()
+dailyc = corrected.resample('D').mean()
+dailyc = calc_resids(dailyc)
+#plot_hobo_modis_resids(dailyc,folder='Cor-Factor/Ts/Daily/Resids')
 # plot_hobo_modis(dailyc, folder='Cor-Factor/Ts/Daily')
 
-uhii, suhii = uhi_suhi(large)
-uhiiw = uhii.resample('W').mean()
-suhiiw = suhii.resample('W').mean()
-# plot_hii(uhiiw, title='UHII - Weekly Averages', folder='No-Cor/Ts/HII')
-# plot_hii(suhiiw, title='SUHII - Weekly Averages', folder='No-Cor/Ts/HII')
+uhii, suhii = uhi_suhi(dataset)
+plot_hii(uhii.resample('W').mean()[5:], title='UHII - Weekly Averages', folder='No-Cor/Ts/HII')
+# plot_hii(suhii.resample('W').mean()[5:], title='SUHII - Weekly Averages', folder='No-Cor/Ts/HII')
 
-uhiic, suhiic = uhi_suhi(largec)
-suhiicw = suhiic.resample('W').mean()
-# plot_hii(suhiicw, title='SUHII - Weekly Averages', folder='Cor-Factor/Ts/HII')
+uhiic, suhiic = uhi_suhi(corrected)
+# plot_hii(suhiic.resample('W').mean()[5:], title='SUHII - Weekly Averages', folder='Cor-Factor/Ts/HII')
 
 # plot_heatmap(uhii, title='UHII-DoW - heatmap', folder='No-Cor/Ts/HII')
 # plot_heatmap(suhiic, title='SUHII-DoW - heatmap', folder='Cor-Factor/Ts/HII')
@@ -235,3 +260,8 @@ suhiicw = suhiic.resample('W').mean()
 uhii_day = day_night(uhii,day=True)
 uhii_night = day_night(uhii,day=False)
 hourly_day = uhii_day.groupby(uhii_day.index.hour).mean()
+
+#suhii_day = day_night(suhii,day=True)
+#plot_hii(suhii_day.resample('W').mean()[5:])
+#suhii_night = day_night(suhii,day=False)
+#plot_hii(suhii_night.resample('W').mean()[5:])

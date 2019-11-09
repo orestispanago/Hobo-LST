@@ -14,7 +14,7 @@ class Hobo:
         self.lon = lon
         Hobo.stations.append(self)
 
-    def read(self, datadir):
+    def read_each(self, datadir):
         """ Reads .csv file for a Hobo object """
         csvlist = glob.glob(f'{os.getcwd()}/{datadir}/*{self.codename}*.csv')
         each = []
@@ -28,11 +28,11 @@ class Hobo:
         each_df = each_df.dropna()
         return each_df
 
-    def load_dataset(datadir):
+    def read_all(datadir):
         """ Loads dataset from all Hobo objects """
         df_list = []
         for station in Hobo.stations:
-            each = Hobo.read(station, datadir)
+            each = Hobo.read_each(station, datadir)
             df_list.append(each)
         hobo_df = pd.concat(df_list, axis=0, sort=False)
         hobo_df = hobo_df.resample('30min').mean()
@@ -72,7 +72,7 @@ class Modis:
                 utc.append(None)
         return utc
 
-    def load_dataset(datadir):
+    def read(datadir):
         hdfiles = glob.glob(os.getcwd() + datadir)
 
         df_lst = pd.DataFrame(columns=['alias', 'time', 'lst'])
@@ -97,5 +97,14 @@ class Modis:
         df_lst = df_lst.tz_localize('UTC')
         return df_lst
 
+def load_dataset():
+    """ Loads hobo and MODIS dataframes to one """
+    hobo = Hobo.read_all('raw/Hobo-Apr-Nov')
+    lst = Modis.read('/raw/*/*.hdf')
+    lst = lst.resample('30min').mean()
+    large = pd.concat([lst, hobo], sort=False)
+    return large
 
 init_hobo()
+
+dataset = load_dataset()
