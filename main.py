@@ -22,7 +22,10 @@ params = {'figure.figsize': (14, 4),
           'xtick.labelsize': 18,
           'ytick.labelsize': 18,
           'font.weight' : 'bold',
-          'font.size': 18,}
+          'font.size': 18,
+          'savefig.dpi': 300.0,
+          'savefig.format': 'tiff',
+          'figure.constrained_layout.use': True}
 plt.rcParams.update(params)
 
 
@@ -36,8 +39,7 @@ def plot_hobo_modis(df, folder=None):
         plt.ylabel('Temperature $(\degree$C)')
         plt.xlabel('Datetime - UTC')
         if folder is not None:
-            name = station.alias + '.png'
-            plt.savefig(make_dir(folder) + name)
+            plt.savefig(make_dir(folder) + station.alias)
         plt.show()
 
 def plot_hobo_modis_resids(df, folder=None):
@@ -139,7 +141,7 @@ def plot_hii(df, title=None, folder=None):
     plt.title(title)
     plt.tight_layout()
     if folder is not None:
-        plt.savefig(make_dir(folder) + title + '.png')
+        plt.savefig(make_dir(folder) + title)
     plt.show()
 
 
@@ -154,11 +156,13 @@ def cor_modis(df):
 
 def plot_heatmap(df, title=None, folder=None):
     byday = dow(df)
-    heatmap = sns.heatmap(byday)
+    fig, ax = plt.subplots(figsize=(10,10))
+    heatmap = sns.heatmap(byday,annot=True,ax=ax,cbar_kws={'label': 'UHII ($\degree$C)'})
+    
     if folder is not None:
         plt.title(title)
         fig = heatmap.get_figure()
-        fig.savefig(make_dir(folder) + title + '.png')
+        fig.savefig(make_dir(folder) + title)
     plt.show()
 
 
@@ -166,34 +170,35 @@ def plot_diurnal(df, title=None, folder=None):
     hourly = df.groupby(df.index.hour).mean()
     for o in others:
         plt.plot(hourly[o.alias])
-        plt.legend()
+        plt.legend(bbox_to_anchor=(1, 1.07))
         plt.xlabel('Time of Day')
     if folder is not None:
         plt.title(title)
-
-        plt.savefig(make_dir(folder) + title + '.png')
+        plt.tight_layout()
+        plt.savefig(make_dir(folder) + title)
     plt.show()
 
 
 def dow(df):
-    weekdays = "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday".split(',')
+    weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday', 'Sunday']
     by_dow = df.groupby(df.index.weekday_name).mean().reindex(weekdays)
+    by_dow.index=[i[:3] for i in weekdays]
     return by_dow
 
 
 def plot_dow(df, title=None, folder=None):
     byday = dow(df)
-    fig = plt.figure()
+    fig = plt.figure(figsize=(12,6))
     ax = plt.subplot(111)
     for o in others:
         ax.plot(byday[o.alias])
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_xlabel('Day of week')
+#    ax.set_xticklabels(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
     if folder is not None:
         ax.set_title(title)
-        fig.savefig(make_dir(folder) + title + '.png')
+        fig.savefig(make_dir(folder) + title)
     plt.show()
-
 
 
 def zenith(df):
@@ -249,12 +254,14 @@ plot_hii(uhii.resample('W').mean()[5:], title='UHII - Weekly Averages', folder='
 uhiic, suhiic = uhi_suhi(corrected)
 # plot_hii(suhiic.resample('W').mean()[5:], title='SUHII - Weekly Averages', folder='Cor-Factor/Ts/HII')
 
-# plot_heatmap(uhii, title='UHII-DoW - heatmap', folder='No-Cor/Ts/HII')
-# plot_heatmap(suhiic, title='SUHII-DoW - heatmap', folder='Cor-Factor/Ts/HII')
+plot_heatmap(uhii, title='UHII', folder='No-Cor/Ts/HII')
+plot_heatmap(suhii, title='SUHII - No correction', folder='No-Cor/Ts/HII')
+plot_heatmap(suhiic, title='SUHII- Corrected', folder='Cor-Factor/Ts/HII')
 
-# plot_diurnal(uhii, title='UHII - Diurnal variation', folder='No-Cor/Ts/HII')
 
-# plot_dow(uhii, title='UHII - DoW', folder='No-Cor/Ts/HII')
+plot_diurnal(uhii, title='UHII - Diurnal variation', folder='No-Cor/Ts/HII')
+
+plot_dow(uhii, title='UHII - DoW', folder='No-Cor/Ts/HII')
 
 
 uhii_day = day_night(uhii,day=True)
